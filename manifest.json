@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Google Calendar Colorizer",
+  "version": "1.0",
+  "description": "Automatically colors Google Calendar events based on keywords.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://calendar.google.com/"
+  ],
+  "action": {
+    "default_popup": "settings.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://calendar.google.com/calendar/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["images/icon16.png", "images/icon48.png", "images/icon128.png"],
+      "matches": ["https://calendar.google.com/*"]
+    }
+  ]
+}
