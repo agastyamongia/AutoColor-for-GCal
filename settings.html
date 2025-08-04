@@ -1,22 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Google Calendar Colorizer Settings</title>
-  <link rel="stylesheet" href="settings.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCal Colorizer</title>
+    <link rel="stylesheet" href="settings.css">
 </head>
 <body>
-  <h1>Google Calendar Colorizer Settings</h1>
+    <header>
+        <h1>GCal Colorizer</h1>
+    </header>
 
-  <h2>Add/Edit Rule</h2>
-  <form id="rule-form">
-    <input type="text" id="keyword" placeholder="Keyword" required>
-        <select id="color"></select>
-    <button type="submit">Save Rule</button>
-  </form>
+    <main>
+        <section>
+            <form id="rule-form" aria-label="Add or edit color rule">
+                <input 
+                    type="text" 
+                    id="keyword" 
+                    name="keyword"
+                    placeholder="Enter keyword (e.g., meeting, gym)" 
+                    required
+                    aria-label="Keyword for color rule"
+                    maxlength="50"
+                >
+                <select 
+                    id="color" 
+                    name="color"
+                    aria-label="Select color for the rule"
+                    required
+                >
+                    <option value="">Choose color...</option>
+                </select>
+                <button type="submit" aria-label="Create the color rule">
+                    Create Rule
+                </button>
+            </form>
+        </section>
 
-  <h2>Rules</h2>
-  <ul id="rules-list"></ul>
+        <section>
+            <h2>Current Rules</h2>
+            <ul id="rules-list" aria-label="List of color rules">
+                <!-- Rules will be populated by JavaScript -->
+            </ul>
+        </section>
+    </main>
 
-  <script src="settings.js"></script>
+    <script src="settings.js"></script>
 </body>
 </html>

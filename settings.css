@@ -1,57 +1,207 @@
+/* === BASE STYLES === */
 body {
-  font-family: sans-serif;
-  margin: 20px;
-  width: 300px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 20px;
+    width: 320px;
+    background-color: #f8f9fa;
+    color: #333;
+    line-height: 1.5;
 }
 
+/* === TYPOGRAPHY === */
 h1 {
-  font-size: 18px;
-  margin-bottom: 10px;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+    color: #1a73e8;
+    border-bottom: 2px solid #e8eaed;
+    padding-bottom: 8px;
 }
 
 h2 {
-  font-size: 16px;
-  margin-top: 20px;
-  margin-bottom: 10px;
+    font-size: 16px;
+    font-weight: 500;
+    margin: 20px 0 12px 0;
+    color: #5f6368;
 }
 
+/* === FORM STYLES === */
 #rule-form {
-  display: flex;
-  margin-bottom: 20px;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    align-items: center;
 }
 
 #keyword {
-  flex-grow: 1;
-  margin-right: 10px;
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
 }
 
+#keyword:focus {
+    outline: none;
+    border-color: #1a73e8;
+    box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+
+#keyword::placeholder {
+    color: #9aa0a6;
+}
+
+#color {
+    padding: 8px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: white;
+    cursor: pointer;
+    min-width: 100px;
+}
+
+#color:focus {
+    outline: none;
+    border-color: #1a73e8;
+    box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+
+button[type="submit"] {
+    padding: 8px 16px;
+    background-color: #1a73e8;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+button[type="submit"]:hover {
+    background-color: #1557b0;
+}
+
+button[type="submit"]:active {
+    background-color: #174ea6;
+}
+
+button[type="submit"]:disabled {
+    background-color: #dadce0;
+    cursor: not-allowed;
+}
+
+/* === RULES LIST === */
 #rules-list {
-  list-style: none;
-  padding: 0;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 #rules-list li {
-  display: flex;
-  align-items: center;
-  margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    background-color: white;
+    border: 1px solid #e8eaed;
+    border-radius: 4px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#rules-list li:hover {
+    border-color: #dadce0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 #rules-list .color-box {
-  width: 20px;
-  height: 20px;
-  margin-right: 10px;
-  border: 1px solid #ccc;
+    width: 20px;
+    height: 20px;
+    margin-right: 12px;
+    border: 1px solid #dadce0;
+    border-radius: 3px;
+    flex-shrink: 0;
 }
 
 #rules-list .keyword {
-  flex-grow: 1;
+    flex: 1;
+    font-weight: 500;
+    color: #202124;
 }
 
 #rules-list .color-name {
-  margin-left: 10px;
-  color: #555;
+    margin-left: 12px;
+    color: #5f6368;
+    font-size: 13px;
+    flex-shrink: 0;
 }
 
-#rules-list button {
-  margin-left: auto;
+#rules-list .delete-rule {
+    margin-left: 8px;
+    padding: 4px 8px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    flex-shrink: 0;
+}
+
+#rules-list .delete-rule:hover {
+    background-color: #c82333;
+}
+
+#rules-list .delete-rule:active {
+    background-color: #bd2130;
+}
+
+/* === STATE STYLES === */
+.no-rules {
+    text-align: center;
+    color: #9aa0a6;
+    font-style: italic;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border: 1px dashed #dadce0;
+}
+
+.error {
+    color: #d93025;
+    background-color: #fce8e6;
+    border: 1px solid #f28b82;
+    padding: 12px;
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+/* === ACCESSIBILITY === */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 400px) {
+    body {
+        width: 280px;
+        padding: 16px;
+    }
+    
+    #rule-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    #color {
+        min-width: auto;
+    }
 }

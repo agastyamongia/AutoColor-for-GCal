@@ -1,21 +1,38 @@
 // === MAIN INITIALIZATION ===
 let observer = null;
-let isProcessing = false;  // Add a flag to prevent double processing
-let debounceTimeout = null; // For debouncing input events
+let isProcessing = false;
+let debounceTimeout = null;
+let urlCheckInterval = null;
+
+// Constants
+const DEBOUNCE_DELAY = 300;
+const PROCESSING_TIMEOUT = 1000;
+const ELEMENT_TIMEOUT = 5000;
+const CLICK_DELAY = 50;
+const ANIMATION_DELAY = 100;
+const URL_CHECK_INTERVAL = 1000;
+
+// Input selectors - centralized for easier maintenance
+const INPUT_SELECTORS = [
+    'input[aria-label="Title"]',
+    'input[aria-label="Add title"]', 
+    'input[jsname="YPqjbf"]'
+];
 
 // Utility to wait for an element to appear and be visible
-function waitForElement(selector, timeout = 5000) {
+function waitForElement(selector, timeout = ELEMENT_TIMEOUT) {
     return new Promise((resolve, reject) => {
         const startTime = Date.now();
+        
         const checkElement = () => {
             const element = document.querySelector(selector);
-            // Check if element exists and is visible (has width and height)
+            
             if (element && element.offsetWidth > 0 && element.offsetHeight > 0) {
                 resolve(element);
             } else if (Date.now() - startTime > timeout) {
                 reject(new Error(`Element ${selector} not found or not visible within ${timeout}ms`));
             } else {
-                requestAnimationFrame(checkElement); // Use requestAnimationFrame for non-blocking checks
+                requestAnimationFrame(checkElement);
             }
         };
 
@@ -25,237 +42,484 @@ function waitForElement(selector, timeout = 5000) {
 
 // Function to simulate a click more robustly
 function simulateClick(element) {
-    if (!element) return;
-    // Try native click first
-    element.click();
+    if (!element || !element.offsetParent) return false;
+    
+    try {
+        // Try native click first
+        element.click();
+        
+        // Fallback to more robust event dispatching
+        setTimeout(() => {
+            if (element.offsetParent) {
+                const event = new MouseEvent('click', {
+                    view: window,
+                    bubbles: true,
+                    cancelable: true
+                });
+                element.dispatchEvent(event);
+            }
+        }, CLICK_DELAY);
+        
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
 
-    // Fallback to more robust event dispatching if native click doesn't work
-    setTimeout(() => {
-        // Check if element is still in DOM and visible before dispatching fallback click
-        if (element.offsetParent) {
-            const event = new MouseEvent('click', {
-                view: window,
-                bubbles: true,
-                cancelable: true
-            });
-            element.dispatchEvent(event);
+// Debounced function to prevent excessive calls
+function debounce(func, delay) {
+    return function(...args) {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+// Check if a keyword matches the input value
+function matchesKeyword(inputValue, keyword) {
+    const normalizedInput = inputValue.toLowerCase();
+    const normalizedKeyword = keyword.toLowerCase();
+    
+    return normalizedInput.includes(normalizedKeyword) || 
+           normalizedInput.includes(normalizedKeyword + ' ');
+}
+
+// Process input and apply color if matched
+async function processInput(input) {
+    if (isProcessing) {
+        return;
+    }
+    
+    const value = input.value.trim();
+    if (!value) return;
+    
+    try {
+        isProcessing = true;
+        
+        // Check if extension context is still valid
+        if (typeof chrome === 'undefined' || !chrome.storage) {
+            // Fallback to default rules if extension context is invalid
+            const fallbackRules = [
+                { keyword: 'meeting', color: 'Tomato' },
+                { keyword: 'work', color: 'Grape' },
+                { keyword: 'personal', color: 'Sage' },
+                { keyword: 'gym', color: 'Blueberry' }
+            ];
+            const matched = fallbackRules.find(rule => matchesKeyword(value, rule.keyword));
+            
+            if (matched) {
+                await setColor(matched.color);
+            }
+            return;
         }
-    }, 50); // Small delay before fallback
+        
+        // Check if chrome.storage is available
+        if (!chrome.storage.sync) {
+            // Fallback to default rules if storage is not available
+            const fallbackRules = [
+                { keyword: 'meeting', color: 'Tomato' },
+                { keyword: 'work', color: 'Grape' },
+                { keyword: 'personal', color: 'Sage' },
+                { keyword: 'gym', color: 'Blueberry' }
+            ];
+            const matched = fallbackRules.find(rule => matchesKeyword(value, rule.keyword));
+            
+            if (matched) {
+                await setColor(matched.color);
+            }
+            return;
+        }
+        
+        const data = await chrome.storage.sync.get({ rules: [] });
+        const matched = data.rules.find(rule => matchesKeyword(value, rule.keyword));
+        
+        if (matched) {
+            await setColor(matched.color);
+        }
+    } catch (error) {
+        // If it's an extension context error, clean up and reinitialize
+        if (error.message && error.message.includes('Extension context invalidated')) {
+            cleanup();
+        }
+    } finally {
+        // Reset processing flag after a delay
+        setTimeout(() => {
+            isProcessing = false;
+        }, PROCESSING_TIMEOUT);
+    }
+}
+
+// Debounced version of processInput
+const debouncedProcessInput = debounce(processInput, DEBOUNCE_DELAY);
+
+// Attach listener to input element
+function attachInputListener(input) {
+    if (input.dataset.listenerAttached) return;
+    
+    input.dataset.listenerAttached = 'true';
+    
+    const inputHandler = () => {
+        debouncedProcessInput(input);
+    };
+    
+    input.addEventListener('input', inputHandler);
+    
+    // Store reference for potential cleanup
+    input._inputHandler = inputHandler;
+}
+
+// Find and process all input fields
+function processInputFields() {
+    const selector = INPUT_SELECTORS.join(', ');
+    const inputs = document.querySelectorAll(selector);
+    
+    inputs.forEach(attachInputListener);
 }
 
 function initializeListeners() {
-    // Clean up existing observer if it exists
+    // Clean up existing observer
     if (observer) {
         observer.disconnect();
+        observer = null;
     }
 
     try {
-        observer = new MutationObserver(mutations => {
-            // Look for both new event creation and event editing
-            const inputs = document.querySelectorAll('input[aria-label="Title"], input[aria-label="Add title"], input[jsname="YPqjbf"]');
-            console.log("[Smart Colorizer] Found input fields:", inputs.length);
-            
-            inputs.forEach(input => {
-                if (!input.dataset.listenerAttached) {
-                    console.log("[Smart Colorizer] Attaching listener to input:", input.value);
-                    input.dataset.listenerAttached = "true";
-
-                    const inputHandler = async () => {
-                        // Debounce the input event
-                        clearTimeout(debounceTimeout);
-                        debounceTimeout = setTimeout(async () => {
-                            // Prevent double processing
-                            if (isProcessing) {
-                                console.log("[Smart Colorizer] Already processing an event, skipping");
-                                return;
-                            }
-                            
-                            const value = input.value.trim();
-                            if (!value) return; // Skip if empty
-                            
-                            console.log("[Smart Colorizer] Input event triggered for:", value);
-                            
-                            try {
-                                isProcessing = true;  // Set processing flag
-                                
-                                chrome.storage.sync.get({ rules: [] }, async data => {
-                                    console.log("[Smart Colorizer] Retrieved rules:", data.rules);
-                                    try {
-                                        const matched = data.rules.find(rule =>
-                                            value.toLowerCase().includes(rule.keyword.toLowerCase()) ||
-                                            value.toLowerCase().includes(rule.keyword.toLowerCase() + ' ') // Match whole word
-                                        );
-                                
-                                        if (matched) {
-                                            console.log(`[Smart Colorizer] Matched keyword: "${matched.keyword}" → Color: "${matched.color}"`);
-                                            await setColor(matched.color);
-                                        } else {
-                                            console.log("[Smart Colorizer] No matching rule found for:", value);
-                                        }
-                                    } catch (err) {
-                                        console.warn("[Smart Colorizer] Error inside storage callback:", err);
-                                    } finally {
-                                        // Reset processing flag after a short delay
-                                        setTimeout(() => {
-                                            isProcessing = false;
-                                        }, 1000);
-                                    }
-                                });
-                            } catch (err) {
-                                console.warn("[Smart Colorizer] Error accessing chrome storage:", err);
-                                isProcessing = false;  // Reset processing flag on error
-                                // Remove the invalidated listener
-                                input.removeEventListener('input', inputHandler);
-                                input.dataset.listenerAttached = "false";
-                            }
-                        }, 300); // Debounce for 300ms
-                    };
-
-                    // Attach the input event listener for real-time updates
-                    input.addEventListener('input', inputHandler);
-                }
+        observer = new MutationObserver((mutations) => {
+            // Check if any mutations are relevant to our inputs
+            const hasRelevantChanges = mutations.some(mutation => {
+                return mutation.type === 'childList' || 
+                       (mutation.type === 'attributes' && 
+                        mutation.attributeName === 'aria-label');
             });
+            
+            if (hasRelevantChanges) {
+                processInputFields();
+            }
         });
 
-        // Observe both DOM changes and subtree modifications
         observer.observe(document.body, {
             childList: true,
             subtree: true,
             attributes: true,
             attributeFilter: ['aria-label']
         });
-        console.log("[Smart Colorizer] Listeners initialized.");
-    } catch (err) {
-        console.warn("[Smart Colorizer] Error initializing observer:", err);
+        
+        // Process existing inputs
+        processInputFields();
+    } catch (error) {
+        // Silent error handling for production
     }
 }
 
 // Function to close all open menus
 async function closeAllMenus() {
-    // Press Escape key multiple times to ensure all menus are closed
-    for (let i = 0; i < 2; i++) {
-        document.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            keyCode: 27,
-            which: 27,
-            bubbles: true
-        }));
-        await new Promise(resolve => setTimeout(resolve, 50));
+    try {
+        // Press Escape key multiple times to ensure all menus are closed
+        for (let i = 0; i < 2; i++) {
+            document.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape',
+                code: 'Escape',
+                keyCode: 27,
+                which: 27,
+                bubbles: true
+            }));
+            await new Promise(resolve => setTimeout(resolve, CLICK_DELAY));
+        }
+    } catch (error) {
+        // Silent error handling for production
     }
 }
 
 // === COLOR SELECTION LOGIC ===
 async function setColor(colorName) {
     try {
-        console.log("[Smart Colorizer] Attempting to set color:", colorName);
-
-        // First, close any open menus
+        // Close any open menus first
         await closeAllMenus();
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, ANIMATION_DELAY));
 
-        // Step 1: Click the main calendar/color section button
-        let calendarButtonSpan;
+        // Additional step: Close any open dropdowns by clicking outside
         try {
-            // Target the span within .YKPJ0b that has the jsaction
-            calendarButtonSpan = await waitForElement('.YKPJ0b span.JyrDof', 3000); 
-            console.log('[Smart Colorizer] Step 1: Found calendar button span. Clicking it.');
-            simulateClick(calendarButtonSpan); // Use simulateClick
-            await new Promise(resolve => setTimeout(resolve, 200)); // Short delay after click
-        } catch (error) {
-            console.warn(`[Smart Colorizer] ${error.message}`);
-            console.warn('[Smart Colorizer] Could not find the main calendar button span or it was not visible.');
-            return false;
+            // Click on the event title to close any open dropdowns
+            const titleInput = document.querySelector('input[aria-label="Add title"], input[aria-label="Title"], input[jsname="YPqjbf"]');
+            if (titleInput) {
+                titleInput.focus();
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        } catch (e) {
+            // Silent error handling
         }
 
-        // Step 2: Click the button that opens the color grid
-        let colorGridButton;
-        try {
-            colorGridButton = await waitForElement('.Z7vkvc', 3000); // Wait up to 3 seconds
-            console.log('[Smart Colorizer] Step 2: Found color grid button. Clicking it.');
-            simulateClick(colorGridButton);
-            await new Promise(resolve => setTimeout(resolve, 300)); // Longer delay for palette to render
-        } catch (error) {
-            console.warn(`[Smart Colorizer] ${error.message}`);
-            console.warn('[Smart Colorizer] Could not find the color grid button or it was not visible.');
-            return false;
+        // Step 1: Try multiple selectors for the calendar button
+        let calendarButtonSpan = null;
+        const calendarSelectors = [
+            '.YKPJ0b span.JyrDof',
+            '[data-tooltip="Event color"]',
+            '[aria-label*="color"]',
+            '.VfPpkd-LgbsSe[aria-label*="color"]'
+        ];
+        
+        for (const selector of calendarSelectors) {
+            try {
+                calendarButtonSpan = await waitForElement(selector, 2000);
+                if (calendarButtonSpan) {
+                    break;
+                }
+            } catch (e) {
+                // Continue to next selector
+            }
         }
+        
+        if (!calendarButtonSpan) {
+            throw new Error('Could not find calendar color button with any selector');
+        }
+        
+        if (!simulateClick(calendarButtonSpan)) {
+            throw new Error('Failed to click calendar button');
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 300));
 
-        // Find the color options
-        const colorOptions = document.querySelectorAll('div[role="menuitemradio"], div[role="radio"]');
-        console.log("[Smart Colorizer] Found color options:", {
-            count: colorOptions.length,
-            options: Array.from(colorOptions).map(opt => ({
-                label: opt.getAttribute('aria-label'),
-                checked: opt.getAttribute('aria-checked')
-            }))
-        });
+        // Step 2: Try multiple selectors for the color grid button
+        let colorGridButton = null;
+        const colorGridSelectors = [
+            '.Z7vkvc',
+            '[data-tooltip="More colors"]',
+            '[aria-label*="More colors"]',
+            '.VfPpkd-LgbsSe[aria-label*="More"]'
+        ];
+        
+        for (const selector of colorGridSelectors) {
+            try {
+                colorGridButton = await waitForElement(selector, 2000);
+                if (colorGridButton) {
+                    break;
+                }
+            } catch (e) {
+                // Continue to next selector
+            }
+        }
+        
+        if (!colorGridButton) {
+            throw new Error('Could not find color grid button with any selector');
+        }
+        
+        if (!simulateClick(colorGridButton)) {
+            throw new Error('Failed to click color grid button');
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 400));
 
-        let matched = false;
-        for (const option of colorOptions) {
-            const label = option.getAttribute('aria-label')?.toLowerCase() || '';
-            if (label.includes(colorName.toLowerCase())) {
-                console.log("[Smart Colorizer] About to click color option:", label);
-                simulateClick(option); // Use simulateClick for color option as well
-                matched = true;
-                console.log("[Smart Colorizer] Clicked color option");
+        // Find and click the color option with retry logic
+        let matchedOption = null;
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        while (!matchedOption && attempts < maxAttempts) {
+            const colorOptions = document.querySelectorAll('div[role="menuitemradio"], div[role="radio"], [data-color-name]');
+
+            matchedOption = Array.from(colorOptions).find(option => {
+                const label = option.getAttribute('aria-label')?.toLowerCase() || '';
+                const colorNameAttr = option.getAttribute('data-color-name')?.toLowerCase() || '';
+                const title = option.getAttribute('title')?.toLowerCase() || '';
+                
+                // More flexible matching
+                const searchTerm = colorName.toLowerCase();
+                return label.includes(searchTerm) || 
+                       colorNameAttr.includes(searchTerm) ||
+                       title.includes(searchTerm);
+            });
+
+            if (!matchedOption && attempts < maxAttempts - 1) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+                attempts++;
+            } else {
                 break;
             }
         }
 
-        if (!matched) {
-            console.warn("[Smart Colorizer] Could not find matching color option");
-            return false;
+        if (!matchedOption) {
+            throw new Error(`Could not find matching color option for: ${colorName}`);
+        }
+        
+        // Try multiple click methods
+        let clickSuccess = false;
+        
+        // Method 1: Direct click
+        if (simulateClick(matchedOption)) {
+            clickSuccess = true;
+        } else {
+            // Method 2: Try clicking parent element
+            const parent = matchedOption.parentElement;
+            if (parent && simulateClick(parent)) {
+                clickSuccess = true;
+            } else {
+                // Method 3: Try programmatic selection
+                try {
+                    matchedOption.setAttribute('aria-checked', 'true');
+                    matchedOption.click();
+                    clickSuccess = true;
+                } catch (e) {
+                    // Silent error handling
+                }
+            }
+        }
+        
+        if (!clickSuccess) {
+            throw new Error('Failed to click color option');
         }
 
-        // Wait a moment for any animations
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        // Close all menus after setting the color
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for animations and close menus
+        await new Promise(resolve => setTimeout(resolve, ANIMATION_DELAY));
         await closeAllMenus();
 
-        console.log(`[Smart Colorizer] Successfully set color to ${colorName}`);
+        // Focus back on the event title input so user can continue editing
+        // Add a longer delay to ensure menus are fully closed
+        setTimeout(async () => {
+            try {
+                // Try multiple selectors to find the title input
+                const titleSelectors = [
+                    'input[aria-label="Add title"]',
+                    'input[aria-label="Title"]', 
+                    'input[jsname="YPqjbf"]',
+                    'input[placeholder*="title"]',
+                    'input[placeholder*="Add title"]'
+                ];
+                
+                let titleInput = null;
+                for (const selector of titleSelectors) {
+                    titleInput = document.querySelector(selector);
+                    if (titleInput) {
+                        break;
+                    }
+                }
+                
+                if (titleInput) {
+                    // Focus the input
+                    titleInput.focus();
+                    
+                    // Wait a bit then position cursor at the end
+                    setTimeout(() => {
+                        try {
+                            const length = titleInput.value.length;
+                            titleInput.setSelectionRange(length, length);
+                        } catch (e) {
+                            // Silent error handling
+                        }
+                    }, 50);
+                }
+            } catch (e) {
+                // Silent error handling
+            }
+        }, 200); // Longer delay to ensure menus are closed
+
         return true;
-    } catch (err) {
-        console.warn("[Smart Colorizer] Error in setColor:", err);
-        isProcessing = false;  // Reset processing flag on error
+        
+    } catch (error) {
+        isProcessing = false;
         return false;
     }
 }
 
-
 // === SPA ROUTE WATCHER ===
-let lastUrl = location.href;
-const urlCheckInterval = setInterval(() => {
-    try {
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
-            console.log("[Smart Colorizer] URL changed. Re-initializing listeners.");
-            initializeListeners();
+function initializeUrlWatcher() {
+    let lastUrl = location.href;
+    
+    urlCheckInterval = setInterval(() => {
+        try {
+            if (location.href !== lastUrl) {
+                lastUrl = location.href;
+                initializeListeners();
+            }
+        } catch (error) {
+            cleanup();
         }
-    } catch (err) {
-        console.warn("[Smart Colorizer] Error in URL watcher:", err);
-        clearInterval(urlCheckInterval);
-    }
-}, 1000);
+    }, URL_CHECK_INTERVAL);
+}
 
-
-// === INITIAL STARTUP ===
-console.log("[Smart Colorizer] Extension starting up");
-initializeListeners();
-
-// Run initialization again after a short delay to catch any dynamic content
-setTimeout(initializeListeners, 1000);
-
-// === CLEANUP ON UNLOAD ===
-window.addEventListener('unload', () => {
+// === CLEANUP FUNCTION ===
+function cleanup() {
     try {
         if (observer) {
             observer.disconnect();
+            observer = null;
         }
-        clearInterval(urlCheckInterval);
-    } catch (err) {
-        console.warn("[Smart Colorizer] Error during cleanup:", err);
+        
+        if (urlCheckInterval) {
+            clearInterval(urlCheckInterval);
+            urlCheckInterval = null;
+        }
+        
+        if (debounceTimeout) {
+            clearTimeout(debounceTimeout);
+            debounceTimeout = null;
+        }
+        
+        // Clean up input listeners
+        const inputs = document.querySelectorAll(INPUT_SELECTORS.join(', '));
+        inputs.forEach(input => {
+            if (input._inputHandler) {
+                input.removeEventListener('input', input._inputHandler);
+                delete input._inputHandler;
+                delete input.dataset.listenerAttached;
+            }
+        });
+        
+    } catch (error) {
+        // Silent error handling for production
     }
-});
+}
+
+// === INITIAL STARTUP ===
+
+// Check if extension context is valid
+function isExtensionContextValid() {
+    return typeof chrome !== 'undefined' && 
+           chrome.runtime && 
+           chrome.runtime.id;
+}
+
+// Initialize everything with retry logic
+async function initializeExtension() {
+    try {
+        // Check if extension context is valid
+        if (!isExtensionContextValid()) {
+            return;
+        }
+        
+        // Wait a bit for the page to be fully loaded
+        if (document.readyState !== 'complete') {
+            await new Promise(resolve => {
+                window.addEventListener('load', resolve, { once: true });
+            });
+        }
+        
+        // Clean up any existing listeners first
+        cleanup();
+        
+        // Initialize listeners
+        initializeListeners();
+        initializeUrlWatcher();
+    } catch (error) {
+        // Only retry if extension context is still valid
+        if (isExtensionContextValid()) {
+            setTimeout(initializeExtension, 1000);
+        }
+    }
+}
+
+// Start initialization
+initializeExtension();
+
+// Run initialization again after a short delay to catch any dynamic content
+setTimeout(() => {
+    try {
+        if (isExtensionContextValid()) {
+            initializeListeners();
+        }
+    } catch (error) {
+        // Silent error handling
+    }
+}, 1000);
+
+// === CLEANUP ON UNLOAD ===
+window.addEventListener('unload', cleanup);
+window.addEventListener('beforeunload', cleanup);
