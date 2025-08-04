@@ -1,6 +1,6 @@
 # Privacy Policy for GCal Colorizer
 
-**Last updated:** [Current Date]
+**Last updated:** August 4, 2025
 
 ## Overview
 
