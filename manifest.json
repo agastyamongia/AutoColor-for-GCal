@@ -4,9 +4,7 @@
   "version": "1.0",
   "description": "🎨 Automatically color-code your Google Calendar events as you type! No more manual color selection - just type!",
   "permissions": [
-    "storage",
-    "activeTab",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
     "https://calendar.google.com/"
